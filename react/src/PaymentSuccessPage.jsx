@@ -41,11 +41,7 @@ export default function PaymentSuccessPage() {
     <div style={{ maxWidth: 760, margin: '40px auto', padding: 24, fontFamily: 'sans-serif' }}>
       <h2>{isPaid ? 'Payment Successful' : 'Payment Status'}</h2>
       {isPaid ? (
-        <>
-          <p>Invoice Number: {payment?.invoice_id ?? 'N/A'}</p>
-          <p>Payment Status: {payment?.status ?? 'PAID'}</p>
-          <p>Stripe checkout session has been verified by the backend.</p>
-        </>
+        <><h3>Advance Payment Successful</h3><p>Booking ID: #{payment?.booking?.booking_id}</p><p>Service: {payment?.booking?.service?.service_name}</p><p>Total Service Amount: LKR {Number(payment?.invoice?.total_amount || 0).toLocaleString()}</p><p>Advance Paid: LKR {Number(payment?.invoice?.advance_amount || 0).toLocaleString()}</p><p>Remaining Amount: LKR {Number(payment?.invoice?.remaining_amount || 0).toLocaleString()}</p><p>Payment Status: PAID</p><p>Booking Status: {payment?.booking?.booking_status || 'CONFIRMED'}</p></>
       ) : (
         <p>Payment could not be confirmed yet. Please check your invoice or try again.</p>
       )}

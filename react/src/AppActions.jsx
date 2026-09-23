@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext';
 import CustomerDashboard from './CustomerDashboard';
 import PaymentSuccessPage from './PaymentSuccessPage';
 import PaymentCancelPage from './PaymentCancelPage';
+import BookingConfirmationPage from './BookingConfirmationPage';
 import './App.css';
 
 const resources = {
@@ -67,4 +68,4 @@ function RegisterPage() { const navigate = useNavigate(); const { login } = useA
 
 function Protected({ role, children }) { const { auth } = useAuth(); if (!auth) return <Navigate to="/login" replace />; if (auth.role !== role) return <Navigate to={`/${auth.role}/dashboard`} replace />; return children; }
 
-export default function AppActions() { return <Routes><Route path="/login" element={<LoginPage />} /><Route path="/register" element={<RegisterPage />} /><Route path="/payment/success" element={<PaymentSuccessPage />} /><Route path="/payment/cancel" element={<PaymentCancelPage />} /><Route path="/admin/dashboard" element={<Protected role="admin"><Shell /></Protected>} /><Route path="/customer/dashboard" element={<Protected role="customer"><Shell /></Protected>} /><Route path="/mechanic/dashboard" element={<Protected role="mechanic"><Shell /></Protected>} /><Route path="*" element={<Navigate to="/login" replace />} /></Routes>; }
+export default function AppActions() { return <Routes><Route path="/login" element={<LoginPage />} /><Route path="/register" element={<RegisterPage />} /><Route path="/payment/success" element={<Protected role="customer"><PaymentSuccessPage /></Protected>} /><Route path="/payment/cancel" element={<Protected role="customer"><PaymentCancelPage /></Protected>} /><Route path="/booking-confirmation/:bookingId" element={<Protected role="customer"><BookingConfirmationPage /></Protected>} /><Route path="/admin/dashboard" element={<Protected role="admin"><Shell /></Protected>} /><Route path="/customer/dashboard" element={<Protected role="customer"><Shell /></Protected>} /><Route path="/mechanic/dashboard" element={<Protected role="mechanic"><Shell /></Protected>} /><Route path="*" element={<Navigate to="/login" replace />} /></Routes>; }
