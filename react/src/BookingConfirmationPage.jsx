@@ -47,8 +47,9 @@ export default function BookingConfirmationPage() {
     <p>Service Total: {money(invoice?.total_amount)}</p>
     <p>Advance Payment: {money(invoice?.advance_amount)}</p>
     <p>Remaining Amount: {money(invoice?.remaining_amount)}</p>
-    <p>Payment Status: {invoice?.advance_payment_status || 'PENDING'}</p>
-    {invoice?.advance_payment_status === 'PAID' ? <p>Advance payment completed. Booking status: {booking.booking_status}</p> : <button disabled={paying} onClick={payAdvance}>{paying ? 'Opening Stripe...' : 'Confirm Booking & Pay Advance'}</button>}
+    <p>Payment Status: {booking.payment_status || invoice?.payment_status || invoice?.advance_payment_status || 'PENDING'}</p>
+    {booking.advance_payment && <><p>Payment Date: {new Date(booking.advance_payment.payment_date).toLocaleString()}</p><p>Payment Method: {booking.advance_payment.payment_method || 'CARD'}</p><p>Advance Amount: {money(booking.advance_payment.payment_amount || invoice?.advance_amount)}</p></>}
+    {booking.admin_status === 'APPROVED' ? <p>Advance Payment Approved ✓. Booking status: {booking.booking_status}</p> : booking.admin_status === 'REJECTED' ? <><p>Payment Rejected</p><p>{booking.advance_payment?.rejection_reason || invoice?.rejection_reason}</p><button disabled={paying} onClick={payAdvance}>{paying ? 'Opening Stripe...' : 'Pay Advance Again'}</button></> : ['PAID', 'COMPLETED'].includes(String(booking.payment_status || invoice?.payment_status || invoice?.advance_payment_status || '').toUpperCase()) ? <><p>Payment Submitted ✓</p><p>Waiting for Admin Approval</p></> : <button disabled={paying} onClick={payAdvance}>{paying ? 'Opening Stripe...' : 'Confirm Booking & Pay Advance'}</button>}
     <button onClick={() => navigate('/customer/dashboard')}>Back to Dashboard</button>
   </main>;
 }

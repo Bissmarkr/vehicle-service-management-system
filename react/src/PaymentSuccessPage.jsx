@@ -21,7 +21,7 @@ export default function PaymentSuccessPage() {
           params: { session_id: sessionId },
         });
         setPayment(response.data);
-      } catch (error) {
+      } catch {
         setPayment({ success: false, message: 'Unable to confirm payment status.' });
       } finally {
         setLoading(false);
@@ -35,13 +35,16 @@ export default function PaymentSuccessPage() {
     return <div style={{ padding: 40 }}><h2>Verifying payment...</h2></div>;
   }
 
-  const isPaid = payment?.paid === true;
+  const isPaid = payment?.paid === true || ['PAID', 'COMPLETED'].includes(String(payment?.payment_status || payment?.status || '').toUpperCase());
+  const adminStatus = payment?.admin_status || payment?.payment?.admin_status;
+  const isRemaining = payment?.payment_type === 'remaining';
+  const totalPaid = Number(payment?.total_paid || 0);
 
   return (
     <div style={{ maxWidth: 760, margin: '40px auto', padding: 24, fontFamily: 'sans-serif' }}>
-      <h2>{isPaid ? 'Payment Successful' : 'Payment Status'}</h2>
+      <h2>{isPaid ? (isRemaining ? 'Remaining Payment Completed' : 'Payment Successful') : 'Payment Status'}</h2>
       {isPaid ? (
-        <><h3>Advance Payment Successful</h3><p>Booking ID: #{payment?.booking?.booking_id}</p><p>Service: {payment?.booking?.service?.service_name}</p><p>Total Service Amount: LKR {Number(payment?.invoice?.total_amount || 0).toLocaleString()}</p><p>Advance Paid: LKR {Number(payment?.invoice?.advance_amount || 0).toLocaleString()}</p><p>Remaining Amount: LKR {Number(payment?.invoice?.remaining_amount || 0).toLocaleString()}</p><p>Payment Status: PAID</p><p>Booking Status: {payment?.booking?.booking_status || 'CONFIRMED'}</p></>
+        <><h3>{isRemaining ? '✓ Remaining Payment Completed' : adminStatus === 'APPROVED' ? 'Advance Payment Approved ✓' : adminStatus === 'REJECTED' ? 'Payment Rejected' : 'Payment Submitted ✓'}</h3><p>Booking ID: #{payment?.booking?.booking_id || payment?.booking_id}</p><p>Service: {payment?.booking?.service?.service_name}</p>{isRemaining ? <><p>Total: LKR {Number(payment?.invoice?.total_amount || 0).toLocaleString()}</p><p>Advance Paid: LKR {Number(payment?.invoice?.advance_amount || payment?.advance_amount || 0).toLocaleString()}</p><p>Remaining Paid: LKR {Number(payment?.payment?.payment_amount || 0).toLocaleString()}</p><p>Total Paid: LKR {totalPaid.toLocaleString()}</p><p>Payment Status: ✓ FULLY PAID</p><p>Invoice Status: ✓ {payment?.invoice_status || 'PAID'}</p></> : <><p>Advance Amount: LKR {Number(payment?.advance_amount || payment?.invoice?.advance_amount || 0).toLocaleString()}</p><p>Payment Date: {payment?.payment?.payment_date ? new Date(payment.payment.payment_date).toLocaleString() : 'Confirmed by Stripe'}</p><p>Payment Method: {payment?.payment?.payment_method || 'CARD'}</p><p>Payment Status: {payment?.payment_status || 'COMPLETED'}</p><p>{adminStatus === 'APPROVED' ? 'Advance Payment Approved ✓' : adminStatus === 'REJECTED' ? `Payment Rejected: ${payment?.rejection_reason || payment?.payment?.rejection_reason || 'Please contact the service center.'}` : 'Waiting for Admin Approval'}</p><p>Booking Status: {payment?.booking?.booking_status || 'PENDING'}</p></>}</>
       ) : (
         <p>Payment could not be confirmed yet. Please check your invoice or try again.</p>
       )}

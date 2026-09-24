@@ -40,6 +40,9 @@ class StripeWebhookController extends Controller
         }
 
         if ($eventType === 'checkout.session.completed') {
+            if (($object->payment_status ?? null) !== 'paid') {
+                return response()->json(['received' => true]);
+            }
             return $this->handleCheckoutSessionCompleted($object, $eventId);
         }
 
@@ -55,12 +58,16 @@ class StripeWebhookController extends Controller
         $invoiceId = $session->metadata->invoice_id ?? null;
         $paymentIntentId = $session->payment_intent ?? null;
         $customerId = $session->metadata->customer_id ?? null;
+        $paymentType = $session->metadata->payment_type ?? 'advance';
+        if (! in_array($paymentType, ['advance', 'remaining'], true)) {
+            return response()->json(['received' => true]);
+        }
 
         $existing = Payment::where('stripe_checkout_session_id', $session->id)
             ->orWhere('stripe_payment_intent_id', $paymentIntentId)
             ->first();
 
-        if ($existing && $existing->payment_status === 'PAID') {
+        if ($existing && in_array($existing->payment_status, ['PAID', 'COMPLETED'], true) && $existing->admin_status !== 'REJECTED') {
             return response()->json(['received' => true]);
         }
 
@@ -69,15 +76,17 @@ class StripeWebhookController extends Controller
             return response()->json(['received' => true]);
         }
 
-        DB::transaction(function () use ($invoice, $session, $paymentIntentId, $customerId, $eventId) {
-            $payment = Payment::firstOrNew(['invoice_id' => $invoice->invoice_id, 'payment_type' => 'advance']);
+        DB::transaction(function () use ($invoice, $session, $paymentIntentId, $customerId, $eventId, $paymentType) {
+            $payment = Payment::firstOrNew(['invoice_id' => $invoice->invoice_id, 'payment_type' => $paymentType]);
             $payment->booking_id = $invoice->booking_id;
             $payment->customer_id = $customerId ?? $invoice->booking?->customer_id;
-            $payment->payment_amount = $invoice->advance_amount;
+            $payment->payment_amount = $payment->payment_amount ?: ($paymentType === 'remaining' ? max(0, (float) $invoice->total_amount - (float) $invoice->advance_amount) : $invoice->advance_amount);
             $payment->payment_method = 'CARD';
             $payment->payment_date = now();
-            $payment->payment_status = 'PAID';
-            $payment->status = 'PAID';
+            $payment->payment_status = $paymentType === 'remaining' ? 'PAID' : 'COMPLETED';
+            $payment->admin_status = $paymentType === 'advance' ? ($payment->admin_status === 'REJECTED' ? 'PENDING_APPROVAL' : ($payment->admin_status ?: 'PENDING_APPROVAL')) : 'PENDING_REVIEW';
+            $payment->rejection_reason = null;
+            $payment->status = $paymentType === 'remaining' ? 'PAID' : 'COMPLETED';
             $payment->currency = strtoupper((string) config('services.stripe.currency', 'lkr'));
             $payment->stripe_checkout_session_id = $session->id;
             $payment->stripe_payment_intent_id = $paymentIntentId;
@@ -85,14 +94,7 @@ class StripeWebhookController extends Controller
             $payment->paid_at = now();
             $payment->save();
 
-            $invoice->update(['advance_payment_status' => 'PAID']);
-
-            if ($invoice->booking) {
-                $invoice->booking()->update([
-                    'payment_status' => 'PAID',
-                    'booking_status' => 'CONFIRMED',
-                ]);
-            }
+            $this->syncInvoicePaymentState($invoice, $paymentType);
         });
 
         return response()->json(['received' => true]);
@@ -106,7 +108,7 @@ class StripeWebhookController extends Controller
             return response()->json(['received' => true]);
         }
 
-        if ($payment->payment_status === 'PAID' && $eventType === 'payment_intent.succeeded') {
+        if (in_array($payment->payment_status, ['PAID', 'COMPLETED'], true) && $eventType === 'payment_intent.succeeded' && $payment->admin_status !== 'REJECTED') {
             return response()->json(['received' => true]);
         }
 
@@ -115,21 +117,17 @@ class StripeWebhookController extends Controller
 
             if ($eventType === 'payment_intent.succeeded') {
                 $payment->update([
-                    'payment_status' => 'PAID',
-                    'status' => 'PAID',
+                    'payment_status' => $payment->payment_type === 'remaining' ? 'PAID' : 'COMPLETED',
+                    'admin_status' => $payment->payment_type === 'advance' ? ($payment->admin_status === 'REJECTED' ? 'PENDING_APPROVAL' : ($payment->admin_status ?: 'PENDING_APPROVAL')) : 'PENDING_REVIEW',
+                    'rejection_reason' => null,
+                    'status' => $payment->payment_type === 'remaining' ? 'PAID' : 'COMPLETED',
                     'stripe_payment_intent_id' => $paymentIntent->id,
                     'stripe_event_id' => $eventId,
                     'paid_at' => now(),
                 ]);
 
                 if ($invoice) {
-                    $invoice->update(['advance_payment_status' => 'PAID']);
-                    if ($invoice->booking) {
-                        $invoice->booking()->update([
-                            'payment_status' => 'PAID',
-                            'booking_status' => 'CONFIRMED',
-                        ]);
-                    }
+                    $this->syncInvoicePaymentState($invoice, $payment->payment_type);
                 }
             }
 
@@ -144,5 +142,35 @@ class StripeWebhookController extends Controller
         });
 
         return response()->json(['received' => true]);
+    }
+
+    protected function syncInvoicePaymentState(Invoice $invoice, string $paymentType): void
+    {
+        $successfulTotal = (float) Payment::where('invoice_id', $invoice->invoice_id)
+            ->whereIn('payment_status', ['PAID', 'COMPLETED'])
+            ->sum('payment_amount');
+        $advancePaid = Payment::where('invoice_id', $invoice->invoice_id)
+            ->where('payment_type', 'advance')
+            ->whereIn('payment_status', ['PAID', 'COMPLETED'])
+            ->exists();
+        $remainingPaid = Payment::where('invoice_id', $invoice->invoice_id)
+            ->where('payment_type', 'remaining')
+            ->whereIn('payment_status', ['PAID', 'COMPLETED'])
+            ->exists();
+        $fullyPaid = $successfulTotal >= (float) $invoice->total_amount;
+
+        $invoice->update([
+            'advance_payment_status' => $advancePaid ? 'COMPLETED' : $invoice->advance_payment_status,
+            'remaining_payment_status' => $remainingPaid ? 'PAID' : $invoice->remaining_payment_status,
+            'remaining_amount' => max(0, round((float) $invoice->total_amount - $successfulTotal, 2)),
+            'invoice_status' => $fullyPaid ? 'PAID' : ($successfulTotal > 0 ? 'PARTIALLY_PAID' : 'UNPAID'),
+        ]);
+
+        if ($invoice->booking) {
+            $invoice->booking()->update([
+                'payment_status' => $fullyPaid ? 'PAID' : ($successfulTotal > 0 ? 'PARTIALLY_PAID' : 'PENDING'),
+                'booking_status' => $successfulTotal > 0 ? 'CONFIRMED' : $invoice->booking->booking_status,
+            ]);
+        }
     }
 }

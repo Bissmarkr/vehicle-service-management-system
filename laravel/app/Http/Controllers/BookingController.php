@@ -124,7 +124,28 @@ class BookingController extends Controller
     {
         $customer = Customer::where('user_id', request()->user()->user_id)->first();
         if (strtolower((string) request()->user()->role) === 'customer' && (int) $booking->customer_id !== (int) $customer?->customer_id) abort(403, 'You are not authorized to view this booking.');
-        return response()->json(['success' => true, 'data' => $booking->load(['customer', 'vehicle', 'service', 'invoice'])]);
+        $booking->load(['customer', 'vehicle', 'service', 'invoice.payments']);
+        $payments = $booking->invoice?->payments ?? collect();
+        $payment = $payments->where('payment_type', 'advance')->sortByDesc('payment_id')->first();
+        $remainingPayment = $payments->where('payment_type', 'remaining')->sortByDesc('payment_id')->first();
+        $successfulTotal = $payments->whereIn('payment_status', ['PAID', 'COMPLETED'])->sum('payment_amount');
+        $remainingAmount = $booking->invoice ? max(0, round((float) $booking->invoice->total_amount - (float) $successfulTotal, 2)) : 0;
+        $booking->setAttribute('payment_status', $booking->invoice && $successfulTotal >= (float) $booking->invoice->total_amount ? 'PAID' : ($successfulTotal > 0 ? 'PARTIALLY_PAID' : strtoupper((string) ($payment?->payment_status ?: $booking->payment_status ?: 'PENDING'))));
+        $booking->setAttribute('admin_status', $payment?->admin_status);
+        $booking->setAttribute('advance_payment', $payment);
+        $booking->setAttribute('remaining_payment', $remainingPayment);
+        $booking->setAttribute('remaining_amount', $remainingAmount);
+        $booking->setAttribute('remaining_payment_status', $remainingPayment && in_array((string) $remainingPayment->payment_status, ['PAID', 'COMPLETED'], true) ? 'PAID' : strtoupper((string) ($booking->invoice?->remaining_payment_status ?: ($remainingPayment?->payment_status ?: 'PENDING'))));
+        if ($booking->invoice) {
+            $booking->invoice->setAttribute('payment_status', $booking->payment_status);
+            $booking->invoice->setAttribute('admin_status', $payment?->admin_status);
+            $booking->invoice->setAttribute('rejection_reason', $payment?->rejection_reason);
+            $booking->invoice->setAttribute('advance_payment', $payment);
+            $booking->invoice->setAttribute('remaining_payment', $remainingPayment);
+            $booking->invoice->setAttribute('remaining_amount', $remainingAmount);
+            $booking->invoice->setAttribute('remaining_payment_status', $booking->remaining_payment_status);
+        }
+        return response()->json(['success' => true, 'data' => $booking]);
     }
 
     public function update(Request $request, Booking $booking)

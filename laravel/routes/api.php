@@ -52,8 +52,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('invoices', InvoiceController::class)->only(['index', 'show', 'store']);
     Route::post('/payments/create-checkout-session', [PaymentController::class, 'createCheckoutSession']);
+    Route::post('/payments/create-remaining-checkout-session', [PaymentController::class, 'createRemainingCheckoutSession']);
     Route::get('/payments/status', [PaymentController::class, 'paymentStatus']);
-    Route::apiResource('payments', PaymentController::class)->only(['index', 'show', 'store']);
+    Route::get('/payments/my-payments', [PaymentController::class, 'myPayments'])->middleware('role:customer');
+    Route::get('/admin/payment-requests', [PaymentController::class, 'adminPaymentRequests'])->middleware('role:admin');
+    Route::get('/admin/payment-requests/{payment}', [PaymentController::class, 'adminPaymentRequest'])->middleware('role:admin');
+    Route::post('/admin/payment-requests/{payment}/read', [PaymentController::class, 'markPaymentRequestRead'])->middleware('role:admin');
+    Route::post('/admin/payment-requests/{payment}/approve', [PaymentController::class, 'approvePaymentRequest'])->middleware('role:admin');
+    Route::post('/admin/payment-requests/{payment}/reject', [PaymentController::class, 'rejectPaymentRequest'])->middleware('role:admin');
+    Route::apiResource('payments', PaymentController::class)->only(['index', 'show', 'store'])->middleware('role:admin');
     Route::get('/vehicles/{vehicle}/service-history', [ServiceHistoryController::class, 'forVehicle']);
     Route::get('/service-history', [ServiceHistoryController::class, 'index']);
 });

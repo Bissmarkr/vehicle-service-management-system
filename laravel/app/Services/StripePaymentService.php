@@ -17,15 +17,25 @@ class StripePaymentService
 
     public function createCheckoutSession(Invoice $invoice, Customer $customer): Session
     {
+        return $this->createPaymentSession($invoice, $customer, (float) $invoice->advance_amount, 'advance');
+    }
+
+    public function createRemainingCheckoutSession(Invoice $invoice, Customer $customer, float $remainingAmount): Session
+    {
+        return $this->createPaymentSession($invoice, $customer, $remainingAmount, 'remaining');
+    }
+
+    private function createPaymentSession(Invoice $invoice, Customer $customer, float $amount, string $paymentType): Session
+    {
         $booking = $invoice->booking()->with('service')->first();
         $serviceName = $booking?->service?->service_name ?? 'Vehicle service';
         $currency = strtolower((string) config('services.stripe.currency', 'lkr'));
-        $amountInMinorUnits = (int) round((float) $invoice->advance_amount * 100);
+        $amountInMinorUnits = (int) round($amount * 100);
         $successUrl = rtrim((string) config('app.frontend_url'), '/') . '/payment/success?session_id={CHECKOUT_SESSION_ID}';
-        $cancelUrl = rtrim((string) config('app.frontend_url'), '/') . '/payment/cancel';
+        $cancelUrl = rtrim((string) config('app.frontend_url'), '/') . '/payment/cancel?booking_id=' . (int) ($booking?->booking_id ?? 0) . '&payment_type=' . $paymentType;
 
         if ($amountInMinorUnits < 1) {
-            throw new InvalidArgumentException('The calculated advance amount must be greater than zero.');
+            throw new InvalidArgumentException('The calculated payment amount must be greater than zero.');
         }
 
         if (! filter_var(str_replace('{CHECKOUT_SESSION_ID}', 'checkout-session', $successUrl), FILTER_VALIDATE_URL) || ! filter_var($cancelUrl, FILTER_VALIDATE_URL)) {
@@ -48,7 +58,7 @@ class StripePaymentService
                 'invoice_id' => (string) $invoice->invoice_id,
                 'booking_id' => (string) ($booking?->booking_id ?? 0),
                 'customer_id' => (string) $customer->customer_id,
-                'payment_type' => 'advance',
+                'payment_type' => $paymentType,
             ],
             'customer_email' => $customer->email,
             'success_url' => $successUrl,

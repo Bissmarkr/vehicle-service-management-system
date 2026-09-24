@@ -18,12 +18,23 @@ class Payment extends Model
         'payment_method',
         'payment_date',
         'payment_status',
+        'admin_status',
+        'approved_by',
+        'approved_at',
+        'rejection_reason',
         'status',
         'currency',
         'stripe_checkout_session_id',
         'stripe_payment_intent_id',
         'stripe_event_id',
         'paid_at',
+    ];
+
+    protected $casts = [
+        'payment_amount' => 'decimal:2',
+        'payment_date' => 'datetime',
+        'approved_at' => 'datetime',
+        'paid_at' => 'datetime',
     ];
 
     public function invoice() { return $this->belongsTo(Invoice::class, 'invoice_id', 'invoice_id'); }

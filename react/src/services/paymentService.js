@@ -8,6 +8,14 @@ export const createCheckoutSession = async (invoiceId) => {
   return response.data;
 };
 
+export const createRemainingCheckoutSession = async (bookingId) => {
+  const response = await api.post('/payments/create-remaining-checkout-session', {
+    booking_id: bookingId,
+  });
+
+  return response.data;
+};
+
 export const getPaymentStatus = async (sessionId) => {
   const response = await api.get('/payments/status', {
     params: { session_id: sessionId },

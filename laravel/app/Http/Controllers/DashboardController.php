@@ -23,6 +23,17 @@ class DashboardController extends Controller
             'completed_services' => Booking::where('booking_status', 'COMPLETED')->count(),
             'invoices' => Invoice::count(),
             'payments' => Payment::sum('payment_amount'),
+            'pending_payment_requests' => Payment::where(function ($query) {
+                $query->where(function ($advanceQuery) {
+                    $advanceQuery->where('payment_type', 'advance')
+                        ->where('payment_status', 'COMPLETED')
+                        ->where('admin_status', 'PENDING_APPROVAL');
+                })->orWhere(function ($remainingQuery) {
+                    $remainingQuery->where('payment_type', 'remaining')
+                        ->whereIn('payment_status', ['PAID', 'COMPLETED'])
+                        ->where('admin_status', 'PENDING_REVIEW');
+                });
+            })->count(),
         ];
 
         return response()->json([
